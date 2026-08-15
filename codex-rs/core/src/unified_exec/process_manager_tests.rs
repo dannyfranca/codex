@@ -7,6 +7,23 @@ use tokio::time::Duration;
 use tokio::time::Instant;
 
 #[test]
+fn empty_write_stdin_uses_configured_max_yield_time() {
+    assert_eq!(write_stdin_yield_time_ms("", 300_000, 3_600_000), 3_600_000);
+}
+
+#[test]
+fn nonempty_write_stdin_keeps_interactive_yield_bounds() {
+    assert_eq!(
+        write_stdin_yield_time_ms("input", 3_600_000, 7_200_000),
+        MAX_YIELD_TIME_MS
+    );
+    assert_eq!(
+        write_stdin_yield_time_ms("input", 1, 7_200_000),
+        MIN_YIELD_TIME_MS
+    );
+}
+
+#[test]
 fn unified_exec_env_injects_defaults() {
     let env = apply_unified_exec_env(HashMap::new());
     let expected = HashMap::from([
