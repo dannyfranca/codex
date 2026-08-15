@@ -45,7 +45,6 @@ use crate::tools::sandboxing::ToolError;
 use crate::unified_exec::ExecCommandRequest;
 use crate::unified_exec::MAX_UNIFIED_EXEC_PROCESSES;
 use crate::unified_exec::MAX_YIELD_TIME_MS;
-use crate::unified_exec::MIN_EMPTY_YIELD_TIME_MS;
 use crate::unified_exec::MIN_YIELD_TIME_MS;
 use crate::unified_exec::ProcessEntry;
 use crate::unified_exec::ProcessStore;
@@ -102,6 +101,20 @@ const NETWORK_ACCESS_DENIED_MESSAGE: &str =
     "Network access was denied by the Codex sandbox network proxy.";
 const LATE_NETWORK_DENIAL_GRACE_PERIOD: Duration = Duration::from_millis(100);
 const INTERRUPT: &str = "\u{3}";
+
+fn write_stdin_yield_time_ms(
+    input: &str,
+    requested_yield_time_ms: u64,
+    max_write_stdin_yield_time_ms: u64,
+) -> u64 {
+    if input.is_empty() {
+        max_write_stdin_yield_time_ms
+    } else {
+        requested_yield_time_ms
+            .max(MIN_YIELD_TIME_MS)
+            .min(MAX_YIELD_TIME_MS)
+    }
+}
 
 /// Test-only override for deterministic unified exec process IDs.
 ///
@@ -931,16 +944,11 @@ impl UnifiedExecProcessManager {
             }
         }
 
-        let yield_time_ms = {
-            // Empty polls use configurable background timeout bounds. Non-empty
-            // writes keep a fixed max cap so interactive stdin remains responsive.
-            let time_ms = request.yield_time_ms.max(MIN_YIELD_TIME_MS);
-            if request.input.is_empty() {
-                time_ms.clamp(MIN_EMPTY_YIELD_TIME_MS, self.max_write_stdin_yield_time_ms)
-            } else {
-                time_ms.min(MAX_YIELD_TIME_MS)
-            }
-        };
+        let yield_time_ms = write_stdin_yield_time_ms(
+            request.input,
+            request.yield_time_ms,
+            self.max_write_stdin_yield_time_ms,
+        );
         let start = Instant::now();
         let deadline = start + Duration::from_millis(yield_time_ms);
         let collected_output =
